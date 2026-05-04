@@ -4,10 +4,6 @@ phases:
   install:
     runtime-versions:
       java: corretto21
-  pre_build:
-    commands:
-      - echo "Checking environment..."
-      - java -version
   build:
     commands:
       - echo "Packaging application..."
@@ -15,11 +11,19 @@ phases:
       - ./mvnw clean package -DskipTests
   post_build:
     commands:
-      - echo "Build completed on `date`"
+      - echo "Build successful. Triggering SSM Deployment to EC2..."
+      - |
+        # Find the Instance ID using the Name Tag injected by CloudMagic
+        INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$TARGET_INSTANCE_NAME" --query "Reservations[].Instances[0].InstanceId" --output text)
+        
+        # Send the command to EC2 to Pull, Build and Run Docker
+        aws ssm send-command \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=['docker stop magic-app || true', 'docker rm magic-app || true', 'docker run -d --name magic-app -p $TARGET_PORT:8085 magic-app']" \
+          --region "$AWS_REGION_NAME"
 
 artifacts:
   files:
     - 'target/*.jar'
     - 'Dockerfile'
-    - 'scripts/**/*' # Include if you have custom scripts
-  discard-paths: no

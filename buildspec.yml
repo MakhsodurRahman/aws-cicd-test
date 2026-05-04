@@ -11,9 +11,12 @@ phases:
       - ./mvnw clean package -DskipTests
   post_build:
     commands:
-      - echo "Deploying to EC2 via SSM..."
+      - echo "Build successful. Preparing for deployment..."
+      # Zip the target folder AND the Dockerfile
       - zip -r deploy.zip target/*.jar Dockerfile
+
       - aws s3 cp deploy.zip s3://$ARTIFACT_BUCKET/deploy.zip
+
       - |
         INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$TARGET_INSTANCE_NAME" --query "Reservations[].Instances[0].InstanceId" --output text)
         aws ssm send-command \

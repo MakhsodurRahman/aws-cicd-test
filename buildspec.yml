@@ -11,19 +11,21 @@ phases:
       - ./mvnw clean package -DskipTests
   post_build:
     commands:
-      - echo "Build successful. Triggering SSM Deployment to EC2..."
+      - echo "Deploying to EC2 via SSM..."
+      - zip -r deploy.zip target/*.jar Dockerfile
+      - aws s3 cp deploy.zip s3://$ARTIFACT_BUCKET/deploy.zip
       - |
-        # Find the Instance ID using the Name Tag injected by CloudMagic
         INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$TARGET_INSTANCE_NAME" --query "Reservations[].Instances[0].InstanceId" --output text)
-        
-        # Send the command to EC2 to Pull, Build and Run Docker
         aws ssm send-command \
           --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
-          --parameters "commands=['docker stop magic-app || true', 'docker rm magic-app || true', 'docker run -d --name magic-app -p $TARGET_PORT:8085 magic-app']" \
+          --parameters "commands=[
+            'mkdir -p /app',
+            'aws s3 cp s3://$ARTIFACT_BUCKET/deploy.zip /app/deploy.zip',
+            'cd /app && unzip -o deploy.zip',
+            'docker build -t magic-app .',
+            'docker stop magic-app || true',
+            'docker rm magic-app || true',
+            'docker run -d --name magic-app -p 8085:8085 magic-app'
+          ]" \
           --region "$AWS_REGION_NAME"
-
-artifacts:
-  files:
-    - 'target/*.jar'
-    - 'Dockerfile'

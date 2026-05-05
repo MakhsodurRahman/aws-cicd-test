@@ -18,7 +18,16 @@ phases:
       - aws s3 cp deploy.zip s3://$ARTIFACT_BUCKET/deploy.zip
 
       - |
-        INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$TARGET_INSTANCE_NAME" --query "Reservations[].Instances[0].InstanceId" --output text)
+        
+        INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$TARGET_INSTANCE_NAME" "Name=instance-state-name,Values=running" --query "Reservations[].Instances[].InstanceId" --output text | awk '{print $1}')
+        
+        if [ "$INSTANCE_ID" == "None" ] || [ -z "$INSTANCE_ID" ]; then
+          echo "Error: No running instance found for $TARGET_INSTANCE_NAME"
+          exit 1
+        fi
+
+        echo "Deploying to Instance: $INSTANCE_ID"
+
         aws ssm send-command \
           --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
